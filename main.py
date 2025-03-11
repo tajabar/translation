@@ -6,7 +6,7 @@ from pdfminer.high_level import extract_text
 from reverso_api.context import ReversoContextAPI
 
 # إعدادات البوت
-TOKEN = "YOUR_TELEGRAM_BOT_TOKEN"
+TOKEN = "6334414905:AAGdBEBDfiY7W9Nhyml1wHxSelo8gfpENR8"
 logging.basicConfig(format='%(asctime)s - %(name)s - %(levelname)s - %(message)s', level=logging.INFO)
 
 def start(update: Update, context: CallbackContext):
