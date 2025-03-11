@@ -1,103 +1,61 @@
-import os
-import logging
-from telegram import Update
-from telegram.ext import Updater, CommandHandler, MessageHandler, Filters, CallbackContext
-from deep_translator import GoogleTranslator
+import asyncio
 import fitz  # PyMuPDF
+import pdfplumber
+from aiogram import Bot, Dispatcher, types
+from aiogram.types import FSInputFile
+from aiogram.filters import Command
+from deep_translator import GoogleTranslator
 
-# إعدادات البوت
-TOKEN = "6334414905:AAGdBEBDfiY7W9Nhyml1wHxSelo8gfpENR8"  # استبدل هذا بالتوكن الخاص بك
-logging.basicConfig(format='%(asctime)s - %(name)s - %(levelname)s - %(message)s', level=logging.INFO)
+TOKEN = "6334414905:AAGdBEBDfiY7W9Nhyml1wHxSelo8gfpENR8"
+bot = Bot(token=TOKEN)
+dp = Dispatcher()
 
-# دالة لمعالجة أمر /start
-def start(update: Update, context: CallbackContext):
-    update.message.reply_text('مرحبًا! أرسل لي ملف PDF لترجمته من الإنجليزية إلى العربية.')
+translator = GoogleTranslator(source="en", target="ar")
 
-# دالة لترجمة النص باستخدام deep-translator
-def translate_text(text):
-    translator = GoogleTranslator(source='en', target='ar')
-    translated = translator.translate(text)
-    return translated
 
-# دالة لتحويل قيم الألوان إلى نطاق 0 إلى 1
-def normalize_color(color):
-    if isinstance(color, int):
-        return (color / 255.0, color / 255.0, color / 255.0)  # Grayscale إلى RGB
-    elif isinstance(color, (tuple, list)):
-        return tuple(c / 255.0 for c in color)
-    else:
-        return (0.0, 0.0, 0.0)  # لون افتراضي: أسود
+async def translate_pdf(input_path, output_path):
+    doc = fitz.open(input_path)
+    translated_texts = []
 
-# دالة لمعالجة ملفات PDF
-def handle_pdf(update: Update, context: CallbackContext):
-    try:
-        # تحقق من وجود ملف مرفق
-        if not update.message or not update.message.document:
-            update.message.reply_text("يرجى إرسال ملف PDF لترجمته.")
-            return
+    # استخراج النصوص باستخدام pdfplumber للحفاظ على ترتيب الفقرات
+    with pdfplumber.open(input_path) as pdf:
+        for page in pdf.pages:
+            text = page.extract_text()
+            if text:
+                translated_text = translator.translate(text)
+                translated_texts.append(translated_text)
 
-        # تحقق من أن الملف هو PDF
-        if not update.message.document.mime_type == "application/pdf":
-            update.message.reply_text("المرجو إرسال ملف PDF فقط.")
-            return
+    # إعادة إنشاء ملف PDF بنفس التصميم مع النصوص المترجمة
+    for i, page in enumerate(doc):
+        if i < len(translated_texts):
+            page.insert_text((50, 50), translated_texts[i], fontsize=12, color=(0, 0, 0))
 
-        # تنزيل الملف
-        file = update.message.document.get_file()
-        file.download('input.pdf')
+    doc.save(output_path)
 
-        # فتح ملف PDF الأصلي
-        pdf_document = fitz.open('input.pdf')
 
-        # إنشاء ملف PDF جديد
-        output_pdf = fitz.open()
+@dp.message(Command("start"))
+async def start_handler(message: types.Message):
+    await message.answer("أرسل لي ملف PDF باللغة الإنجليزية وسأقوم بترجمته إلى العربية مع الحفاظ على تصميمه.")
 
-        # ترجمة النص في كل صفحة
-        for page_num in range(len(pdf_document)):
-            page = pdf_document.load_page(page_num)
-            text_instances = page.get_text("dict")  # استخراج النص كـ dictionary
 
-            # إنشاء صفحة جديدة في ملف PDF الجديد
-            new_page = output_pdf.new_page(width=page.rect.width, height=page.rect.height)
+@dp.message(lambda message: message.document and message.document.mime_type == "application/pdf")
+async def handle_pdf(message: types.Message):
+    file_id = message.document.file_id
+    file = await bot.get_file(file_id)
+    input_path = f"downloads/{file.file_path.split('/')[-1]}"
+    output_path = f"downloads/translated_{file.file_path.split('/')[-1]}"
 
-            # إضافة النص المترجم إلى الصفحة الجديدة
-            for block in text_instances["blocks"]:
-                for line in block["lines"]:
-                    for span in line["spans"]:
-                        original_text = span["text"]
-                        translated_text = translate_text(original_text)
-                        color = normalize_color(span.get("color", (0, 0, 0)))  # استخدام القيمة الافتراضية
-                        new_page.insert_text(
-                            point=(span["origin"][0], span["origin"][1]),
-                            text=translated_text,
-                            fontsize=span["size"],
-                            fontname="helv",
-                            color=color,
-                        )
+    await bot.download_file(file.file_path, input_path)
+    await message.answer("جارٍ ترجمة الملف، انتظر قليلاً...")
 
-        # حفظ ملف PDF الجديد
-        output_pdf.save('translated.pdf')
-        output_pdf.close()
+    await translate_pdf(input_path, output_path)
 
-        # إرسال النتيجة
-        update.message.reply_document(document=open('translated.pdf', 'rb'))
+    translated_file = FSInputFile(output_path, filename="translated.pdf")
+    await message.answer_document(translated_file, caption="تمت الترجمة بنجاح!")
 
-    except Exception as e:
-        update.message.reply_text(f"حدث خطأ أثناء معالجة الملف: {str(e)}")
 
-# دالة رئيسية لتشغيل البوت
-def main():
-    # إنشاء Updater وإضافة Handlers
-    updater = Updater(TOKEN, use_context=True)
-    dp = updater.dispatcher
+async def main():
+    await dp.start_polling(bot)
 
-    # إضافة Handlers
-    dp.add_handler(CommandHandler("start", start))
-    dp.add_handler(MessageHandler(Filters.document.mime_type("application/pdf"), handle_pdf))
-
-    # بدء البوت
-    updater.start_polling()
-    updater.idle()
-
-# تشغيل البوت
-if __name__ == '__main__':
-    main()
+if __name__ == "__main__":
+    asyncio.run(main())
