@@ -21,7 +21,12 @@ def translate_text(text):
 
 # دالة لتحويل قيم الألوان إلى نطاق 0 إلى 1
 def normalize_color(color):
-    return tuple(c / 255.0 for c in color)
+    if isinstance(color, int):
+        return (color / 255.0, color / 255.0, color / 255.0)  # Grayscale إلى RGB
+    elif isinstance(color, (tuple, list)):
+        return tuple(c / 255.0 for c in color)
+    else:
+        return (0.0, 0.0, 0.0)  # لون افتراضي: أسود
 
 # دالة لمعالجة ملفات PDF
 def handle_pdf(update: Update, context: CallbackContext):
@@ -60,13 +65,13 @@ def handle_pdf(update: Update, context: CallbackContext):
                     for span in line["spans"]:
                         original_text = span["text"]
                         translated_text = translate_text(original_text)
-                        color = normalize_color(span["color"]) if "color" in span else (0, 0, 0)  # لون افتراضي: أسود
+                        color = normalize_color(span.get("color", (0, 0, 0)))  # استخدام القيمة الافتراضية
                         new_page.insert_text(
-                            point=(span["origin"][0], span["origin"][1]),  # نفس موقع النص الأصلي
+                            point=(span["origin"][0], span["origin"][1]),
                             text=translated_text,
                             fontsize=span["size"],
-                            fontname="helv",  # استخدام خط افتراضي
-                            color=color,  # استخدام اللون المحول
+                            fontname="helv",
+                            color=color,
                         )
 
         # حفظ ملف PDF الجديد
