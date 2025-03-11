@@ -1,3 +1,4 @@
-python-telegram-bot==13.7
-deep-translator==1.11.4
-pymupdf==1.22.5
+aiogram
+deep-translator
+pdfplumber
+pymupdf
