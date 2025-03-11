@@ -3,23 +3,21 @@ import logging
 from telegram import Update
 from telegram.ext import Updater, CommandHandler, MessageHandler, Filters, CallbackContext
 from pdfminer.high_level import extract_text
-from reverso_api.context import ReversoContextAPI
+from deep_translator import GoogleTranslator
 
 # إعدادات البوت
-TOKEN = "6334414905:AAGdBEBDfiY7W9Nhyml1wHxSelo8gfpENR8"  
+TOKEN = "6334414905:AAGdBEBDfiY7W9Nhyml1wHxSelo8gfpENR8"  # استبدل هذا بالتوكن الخاص بك
 logging.basicConfig(format='%(asctime)s - %(name)s - %(levelname)s - %(message)s', level=logging.INFO)
 
 # دالة لمعالجة أمر /start
 def start(update: Update, context: CallbackContext):
     update.message.reply_text('مرحبًا! أرسل لي ملف PDF لترجمته من الإنجليزية إلى العربية.')
 
-# دالة لترجمة النص باستخدام Reverso
+# دالة لترجمة النص باستخدام deep-translator
 def translate_text(text):
-    api = ReversoContextAPI(source_text=text, source_lang="en", target_lang="ar")
-    translations = list(api.get_translations())  # تحويل الـ generator إلى قائمة
-    if translations:
-        return translations[0]['translation']
-    return ""
+    translator = GoogleTranslator(source='en', target='ar')
+    translated = translator.translate(text)
+    return translated
 
 # دالة لمعالجة ملفات PDF
 def handle_pdf(update: Update, context: CallbackContext):
@@ -44,7 +42,7 @@ def handle_pdf(update: Update, context: CallbackContext):
         # تقسيم النص إلى أجزاء (لتجنب حدود الترجمة)
         chunks = [text[i:i+500] for i in range(0, len(text), 500)]
 
-        # ترجمة كل جزء باستخدام Reverso
+        # ترجمة كل جزء باستخدام deep-translator
         translated_text = []
         for chunk in chunks:
             translated_chunk = translate_text(chunk)
