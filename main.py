@@ -2,9 +2,8 @@ import os
 import logging
 from telegram import Update
 from telegram.ext import Updater, CommandHandler, MessageHandler, Filters, CallbackContext
-from pdfminer.high_level import extract_text
 from deep_translator import GoogleTranslator
-from fpdf import FPDF
+import fitz  # PyMuPDF
 
 # إعدادات البوت
 TOKEN = "6334414905:AAGdBEBDfiY7W9Nhyml1wHxSelo8gfpENR8"  # استبدل هذا بالتوكن الخاص بك
@@ -19,15 +18,6 @@ def translate_text(text):
     translator = GoogleTranslator(source='en', target='ar')
     translated = translator.translate(text)
     return translated
-
-# دالة لإنشاء ملف PDF جديد مع النص المترجم
-def create_pdf(text, output_filename):
-    pdf = FPDF()
-    pdf.add_page()
-    pdf.add_font('Arial', '', 'arial.ttf', uni=True)  # تأكد من وجود ملف الخط
-    pdf.set_font("Arial", size=12)
-    pdf.multi_cell(0, 10, txt=text)
-    pdf.output(output_filename)
 
 # دالة لمعالجة ملفات PDF
 def handle_pdf(update: Update, context: CallbackContext):
@@ -46,24 +36,37 @@ def handle_pdf(update: Update, context: CallbackContext):
         file = update.message.document.get_file()
         file.download('input.pdf')
 
-        # استخراج النص من PDF
-        text = extract_text('input.pdf')
+        # فتح ملف PDF الأصلي
+        pdf_document = fitz.open('input.pdf')
 
-        # تقسيم النص إلى أجزاء (لتجنب حدود الترجمة)
-        chunks = [text[i:i+500] for i in range(0, len(text), 500)]
+        # إنشاء ملف PDF جديد
+        output_pdf = fitz.open()
 
-        # ترجمة كل جزء باستخدام deep-translator
-        translated_text = []
-        for chunk in chunks:
-            translated_chunk = translate_text(chunk)
-            if translated_chunk:
-                translated_text.append(translated_chunk)
+        # ترجمة النص في كل صفحة
+        for page_num in range(len(pdf_document)):
+            page = pdf_document.load_page(page_num)
+            text_instances = page.get_text("dict")  # استخراج النص كـ dictionary
 
-        # دمج النص المترجم
-        final_text = ' '.join(translated_text)
+            # إنشاء صفحة جديدة في ملف PDF الجديد
+            new_page = output_pdf.new_page(width=page.rect.width, height=page.rect.height)
 
-        # إنشاء ملف PDF جديد مع النص المترجم
-        create_pdf(final_text, 'translated.pdf')
+            # إضافة النص المترجم إلى الصفحة الجديدة
+            for block in text_instances["blocks"]:
+                for line in block["lines"]:
+                    for span in line["spans"]:
+                        original_text = span["text"]
+                        translated_text = translate_text(original_text)
+                        new_page.insert_text(
+                            point=(span["origin"][0], span["origin"][1]),  # نفس موقع النص الأصلي
+                            text=translated_text,
+                            fontsize=span["size"],
+                            fontname=span["font"],
+                            color=span["color"],
+                        )
+
+        # حفظ ملف PDF الجديد
+        output_pdf.save('translated.pdf')
+        output_pdf.close()
 
         # إرسال النتيجة
         update.message.reply_document(document=open('translated.pdf', 'rb'))
