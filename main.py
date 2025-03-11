@@ -13,6 +13,14 @@ logging.basicConfig(format='%(asctime)s - %(name)s - %(levelname)s - %(message)s
 def start(update: Update, context: CallbackContext):
     update.message.reply_text('مرحبًا! أرسل لي ملف PDF لترجمته من الإنجليزية إلى العربية.')
 
+# دالة لترجمة النص باستخدام Reverso
+def translate_text(text):
+    api = ReversoContextAPI(source_text=text, source_lang="en", target_lang="ar")
+    translations = api.get_translations()
+    if translations:
+        return translations[0]['translation']
+    return ""
+
 # دالة لمعالجة ملفات PDF
 def handle_pdf(update: Update, context: CallbackContext):
     try:
@@ -38,11 +46,10 @@ def handle_pdf(update: Update, context: CallbackContext):
 
         # ترجمة كل جزء باستخدام Reverso
         translated_text = []
-        api = ReversoContextAPI(source_text="", source_lang="en", target_lang="ar")
         for chunk in chunks:
-            translations = api.get_translations(chunk)
-            if translations:
-                translated_text.append(translations[0]['translation'])
+            translated_chunk = translate_text(chunk)
+            if translated_chunk:
+                translated_text.append(translated_chunk)
 
         # حفظ النص المترجم
         with open('translated.txt', 'w', encoding='utf-8') as f:
