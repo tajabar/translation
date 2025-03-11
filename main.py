@@ -60,7 +60,7 @@ def handle_pdf(update: Update, context: CallbackContext):
                             point=(span["origin"][0], span["origin"][1]),  # نفس موقع النص الأصلي
                             text=translated_text,
                             fontsize=span["size"],
-                            fontname=span["font"],
+                            fontname="helv",  # استخدام خط افتراضي
                             color=span["color"],
                         )
 
