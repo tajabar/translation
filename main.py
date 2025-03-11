@@ -6,7 +6,7 @@ from pdfminer.high_level import extract_text
 from reverso_api.context import ReversoContextAPI
 
 # إعدادات البوت
-TOKEN = "6334414905:AAGdBEBDfiY7W9Nhyml1wHxSelo8gfpENR8"  # استبدل هذا بالتوكن الخاص بك
+TOKEN = "6334414905:AAGdBEBDfiY7W9Nhyml1wHxSelo8gfpENR8"  
 logging.basicConfig(format='%(asctime)s - %(name)s - %(levelname)s - %(message)s', level=logging.INFO)
 
 # دالة لمعالجة أمر /start
@@ -16,7 +16,7 @@ def start(update: Update, context: CallbackContext):
 # دالة لترجمة النص باستخدام Reverso
 def translate_text(text):
     api = ReversoContextAPI(source_text=text, source_lang="en", target_lang="ar")
-    translations = api.get_translations()
+    translations = list(api.get_translations())  # تحويل الـ generator إلى قائمة
     if translations:
         return translations[0]['translation']
     return ""
