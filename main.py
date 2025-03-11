@@ -6,7 +6,7 @@ from aiogram.types import FSInputFile
 from aiogram.filters import Command
 from deep_translator import GoogleTranslator
 
-# إنشاء مجلد "downloads" إذا لم يكن موجودًا
+# إنشاء مجلد downloads إذا لم يكن موجودًا
 os.makedirs("downloads", exist_ok=True)
 
 TOKEN = "6334414905:AAGdBEBDfiY7W9Nhyml1wHxSelo8gfpENR8"  # استبدل هذا بالتوكن الخاص بك
@@ -15,17 +15,35 @@ dp = Dispatcher()
 
 translator = GoogleTranslator(source="en", target="ar")
 
-async def translate_pdf(input_path, output_path):
+async def extract_text_from_pdf(input_path):
+    """ استخراج النصوص من ملف PDF """
     doc = fitz.open(input_path)
+    extracted_text = []
 
     for page in doc:
-        text_instances = page.get_text("text")  # استخراج النصوص
-        if text_instances.strip():  # التأكد من أن الصفحة تحتوي على نصوص
-            translated_text = translator.translate(text_instances)
-            page.clean_contents()  # إزالة النصوص القديمة
-            page.insert_text((50, 50), translated_text, fontsize=12, color=(0, 0, 0))  # إدراج النص الجديد
+        text = page.get_text("text", sort=True).strip()  # استخراج النصوص مع ترتيبها الصحيح
+        if text:
+            extracted_text.append(text)
+
+    return extracted_text
+
+async def translate_pdf(input_path, output_path):
+    """ ترجمة النصوص وإعادة إنشائها في PDF جديد """
+    extracted_text = await extract_text_from_pdf(input_path)
+
+    if not extracted_text:
+        return False  # لا يوجد نص مستخرج للترجمة
+
+    translated_texts = [translator.translate(text) for text in extracted_text]
+
+    # إنشاء PDF جديد مع النصوص المترجمة
+    doc = fitz.open()
+    for translated_text in translated_texts:
+        page = doc.new_page()
+        page.insert_text((50, 50), translated_text, fontsize=12, color=(0, 0, 0))
 
     doc.save(output_path)
+    return True
 
 @dp.message(Command("start"))
 async def start_handler(message: types.Message):
@@ -41,13 +59,16 @@ async def handle_pdf(message: types.Message):
 
     # تنزيل ملف الـ PDF إلى المجلد downloads
     await bot.download_file(file.file_path, input_path)
-    await message.answer("جارٍ ترجمة الملف، انتظر قليلاً...")
+    await message.answer("جارٍ استخراج النصوص وترجمتها، انتظر قليلاً...")
 
     # ترجمة الملف
-    await translate_pdf(input_path, output_path)
+    success = await translate_pdf(input_path, output_path)
 
-    translated_file = FSInputFile(output_path, filename="translated.pdf")
-    await message.answer_document(translated_file, caption="تمت الترجمة بنجاح!")
+    if success:
+        translated_file = FSInputFile(output_path, filename="translated.pdf")
+        await message.answer_document(translated_file, caption="تمت الترجمة بنجاح!")
+    else:
+        await message.answer("عذرًا، لم أتمكن من استخراج النصوص من هذا الملف.")
 
 async def main():
     await dp.start_polling(bot)
