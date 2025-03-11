@@ -1,39 +1,29 @@
 import os
 import asyncio
 import fitz  # PyMuPDF
-import pdfplumber
 from aiogram import Bot, Dispatcher, types
 from aiogram.types import FSInputFile
 from aiogram.filters import Command
 from deep_translator import GoogleTranslator
 
-# إنشاء مجلد downloads إذا لم يكن موجودًا
+# إنشاء مجلد "downloads" إذا لم يكن موجودًا
 os.makedirs("downloads", exist_ok=True)
 
-TOKEN = "6334414905:AAGdBEBDfiY7W9Nhyml1wHxSelo8gfpENR8"  # استبدل هذا التوكن بتوكن البوت الخاص بك
+TOKEN = "6334414905:AAGdBEBDfiY7W9Nhyml1wHxSelo8gfpENR8"  # استبدل هذا بالتوكن الخاص بك
 bot = Bot(token=TOKEN)
 dp = Dispatcher()
 
 translator = GoogleTranslator(source="en", target="ar")
 
 async def translate_pdf(input_path, output_path):
-    # فتح ملف الـ PDF باستخدام PyMuPDF
     doc = fitz.open(input_path)
-    translated_texts = []
 
-    # استخراج النصوص من الملف باستخدام pdfplumber للحفاظ على ترتيب الفقرات
-    with pdfplumber.open(input_path) as pdf:
-        for page in pdf.pages:
-            text = page.extract_text()
-            if text:
-                translated_text = translator.translate(text)
-                translated_texts.append(translated_text)
-
-    # إعادة إنشاء ملف PDF مع الحفاظ على التصميم وإضافة النصوص المترجمة
-    for i, page in enumerate(doc):
-        if i < len(translated_texts):
-            # إدراج النص المترجم في موضع محدد (يمكنك تعديل الإحداثيات والحجم حسب الحاجة)
-            page.insert_text((50, 50), translated_texts[i], fontsize=12, color=(0, 0, 0))
+    for page in doc:
+        text_instances = page.get_text("text")  # استخراج النصوص
+        if text_instances.strip():  # التأكد من أن الصفحة تحتوي على نصوص
+            translated_text = translator.translate(text_instances)
+            page.clean_contents()  # إزالة النصوص القديمة
+            page.insert_text((50, 50), translated_text, fontsize=12, color=(0, 0, 0))  # إدراج النص الجديد
 
     doc.save(output_path)
 
