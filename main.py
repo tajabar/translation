@@ -4,6 +4,7 @@ from telegram import Update
 from telegram.ext import Updater, CommandHandler, MessageHandler, Filters, CallbackContext
 from pdfminer.high_level import extract_text
 from deep_translator import GoogleTranslator
+from fpdf import FPDF
 
 # إعدادات البوت
 TOKEN = "6334414905:AAGdBEBDfiY7W9Nhyml1wHxSelo8gfpENR8"  # استبدل هذا بالتوكن الخاص بك
@@ -18,6 +19,15 @@ def translate_text(text):
     translator = GoogleTranslator(source='en', target='ar')
     translated = translator.translate(text)
     return translated
+
+# دالة لإنشاء ملف PDF جديد مع النص المترجم
+def create_pdf(text, output_filename):
+    pdf = FPDF()
+    pdf.add_page()
+    pdf.add_font('Arial', '', 'arial.ttf', uni=True)  # تأكد من وجود ملف الخط
+    pdf.set_font("Arial", size=12)
+    pdf.multi_cell(0, 10, txt=text)
+    pdf.output(output_filename)
 
 # دالة لمعالجة ملفات PDF
 def handle_pdf(update: Update, context: CallbackContext):
@@ -49,12 +59,14 @@ def handle_pdf(update: Update, context: CallbackContext):
             if translated_chunk:
                 translated_text.append(translated_chunk)
 
-        # حفظ النص المترجم
-        with open('translated.txt', 'w', encoding='utf-8') as f:
-            f.write(' '.join(translated_text))
+        # دمج النص المترجم
+        final_text = ' '.join(translated_text)
+
+        # إنشاء ملف PDF جديد مع النص المترجم
+        create_pdf(final_text, 'translated.pdf')
 
         # إرسال النتيجة
-        update.message.reply_document(document=open('translated.txt', 'rb'))
+        update.message.reply_document(document=open('translated.pdf', 'rb'))
 
     except Exception as e:
         update.message.reply_text(f"حدث خطأ أثناء معالجة الملف: {str(e)}")
