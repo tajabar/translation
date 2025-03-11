@@ -1,3 +1,4 @@
-python-telegram-bot==20.3
-PyPDF2==3.0.1
-reverso-api==1.0.0
+python-telegram-bot==13.7
+pdfminer.six==20221105
+reverso-api==1.0.2
+requests==2.28.1
