@@ -1,4 +1,4 @@
 python-telegram-bot==13.7
 pdfminer.six==20221105
 deep-translator==1.11.4
-requests==2.28.1
+fpdf2==2.7.4
