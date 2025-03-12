@@ -2,3 +2,6 @@ python-telegram-bot==20.3
 requests==2.31.0
 asposepdfcloud==23.9.0
 python-dotenv==1.0.0
+pdf2docx
+python-docx
+ 
