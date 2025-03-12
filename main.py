@@ -1,7 +1,13 @@
-import os
+ import os
 import requests
-from telegram import Update, InputFile
-from telegram.ext import Updater, CommandHandler, MessageHandler, Filters, CallbackContext
+from telegram import Update
+from telegram.ext import (
+    Updater,
+    CommandHandler,
+    MessageHandler,
+    filters,  # تم تغيير الاسم هنا من Filters إلى filters
+    CallbackContext,
+)
 from pypdf2 import PdfReader
 
 # إعدادات API
@@ -48,13 +54,13 @@ def handle_document(update: Update, context: CallbackContext):
         os.remove(file_path)
 
 def main():
-    TELEGRAM_TOKEN = "6334414905:AAGdBEBDfiY7W9Nhyml1wHxSelo8gfpENR8"  # تم إضافة التوكن هنا
+    TELEGRAM_TOKEN = "6334414905:AAGdBEBDfiY7W9Nhyml1wHxSelo8gfpENR8"  # التوكن الخاص بك
     updater = Updater(TELEGRAM_TOKEN)
     dp = updater.dispatcher
 
     dp.add_handler(CommandHandler("start", start))
-    dp.add_handler(MessageHandler(Filters.document, handle_document))
-
+    dp.add_handler(MessageHandler(filters.Document.ALL, handle_document))  # التعديل هنا
+    
     updater.start_polling()
     updater.idle()
 
