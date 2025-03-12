@@ -5,15 +5,15 @@ import asposepdfcloud
 from telegram import Update
 from telegram.ext import Application, CommandHandler, MessageHandler, filters
 from asposepdfcloud.apis.pdf_api import PdfApi
-from asposepdfcloud.models.translate_text_request import TranslateTextRequest
+from googletrans import Translator  # مكتبة الترجمة
 
 # بيانات المصادقة
 TELEGRAM_BOT_TOKEN = "6334414905:AAGdBEBDfiY7W9Nhyml1wHxSelo8gfpENR8"
 ASPOSE_CLIENT_ID = "f3f79d5c-4fcf-4fc7-91d9-c63555b9e96e"
 ASPOSE_CLIENT_SECRET = "cbe2e688854ae8c34601bacfb59967e4"
-
 # تهيئة Aspose API
 pdf_api = PdfApi(ASPOSE_CLIENT_ID, ASPOSE_CLIENT_SECRET)
+translator = Translator()
 
 # إعداد تسجيل الأخطاء
 logging.basicConfig(format='%(asctime)s - %(name)s - %(levelname)s - %(message)s', level=logging.INFO)
@@ -49,13 +49,15 @@ async def handle_document(update: Update, context):
             await update.message.reply_text("فشل تحميل الملف إلى Aspose Cloud.")
             return
 
-        # ترجمة محتوى PDF
-        translate_request = TranslateTextRequest(source_language="en", target_language="ar")
-        translated_text = pdf_api.translate_text(filename, translate_request)
+        # استخراج النص من PDF
+        extracted_text = pdf_api.get_text(filename).text
 
-        if not translated_text:
+        if not extracted_text:
             await update.message.reply_text("لم يتم العثور على نص للترجمة في الملف.")
             return
+
+        # ترجمة النص إلى العربية
+        translated_text = translator.translate(extracted_text, src="en", dest="ar").text
 
         await update.message.reply_text("النص المترجم:\n\n" + translated_text)
     
