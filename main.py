@@ -1,68 +1,76 @@
-import os
+import logging
+import io
 import requests
+import asposepdfcloud
 from telegram import Update
-from telegram.ext import (
-    Updater,
-    CommandHandler,
-    MessageHandler,
-    filters,  # تم تغيير الاسم هنا من Filters إلى filters
-    CallbackContext,
-)
-from pypdf2 import PdfReader
+from telegram.ext import Application, CommandHandler, MessageHandler, filters
+from asposepdfcloud.apis.pdf_api import PdfApi
+from asposepdfcloud.models.translate_text_request import TranslateTextRequest
 
-# إعدادات API
-APYHUB_API_KEY = "APY0ShNmihUEqMaIuecO9MOQJ9oWaBmCcLPfDzknG0URVRiDhAjU2HLznsHVkA4tX"
-APYHUB_TRANSLATE_URL = "https://api.apyhub.com/translate/text"
+# بيانات المصادقة
+TELEGRAM_BOT_TOKEN = "6334414905:AAGdBEBDfiY7W9Nhyml1wHxSelo8gfpENR8"
+ASPOSE_CLIENT_ID = "f3f79d5c-4fcf-4fc7-91d9-c63555b9e96e"
+ASPOSE_CLIENT_SECRET = "cbe2e688854ae8c34601bacfb59967e4"
 
-# دالة لترجمة النص
-def translate_text(text: str, target_lang: str = "ar") -> str:
-    headers = {"apy-token": APYHUB_API_KEY, "Content-Type": "application/json"}
-    data = {"text": text, "target": target_lang}
-    response = requests.post(APYHUB_TRANSLATE_URL, json=data, headers=headers)
-    return response.json().get("data", {}).get("translated")
+# تهيئة Aspose API
+pdf_api = PdfApi(ASPOSE_CLIENT_ID, ASPOSE_CLIENT_SECRET)
 
-# دالة لمعالجة ملف PDF
-def process_pdf(file_path: str) -> str:
-    text = ""
-    with open(file_path, "rb") as f:
-        reader = PdfReader(f)
-        for page in reader.pages:
-            text += page.extract_text()
-    return text
+# إعداد تسجيل الأخطاء
+logging.basicConfig(format='%(asctime)s - %(name)s - %(levelname)s - %(message)s', level=logging.INFO)
+logger = logging.getLogger(__name__)
 
-# معالجة الأوامر
-def start(update: Update, context: CallbackContext):
-    update.message.reply_text("مرحبًا! أرسل لي ملف PDF باللغة الإنجليزية وسأقوم بترجمته إلى العربية.")
+async def start(update: Update, context):
+    """رسالة ترحيبية عند بدء المحادثة"""
+    await update.message.reply_text("مرحبًا! أرسل لي ملف PDF باللغة الإنجليزية وسأقوم بترجمته إلى العربية.")
 
-def handle_document(update: Update, context: CallbackContext):
+async def handle_document(update: Update, context):
+    """التعامل مع ملفات PDF"""
     document = update.message.document
+
     if document.mime_type != "application/pdf":
-        update.message.reply_text("❌ الرجاء إرسال ملف PDF فقط.")
+        await update.message.reply_text("يرجى إرسال ملف PDF فقط.")
         return
 
-    file = context.bot.get_file(document.file_id)
-    file_path = f"temp_{document.file_name}"
-    file.download(file_path)
-    
+    await update.message.reply_text("يتم تحميل الملف...")
+    file = await document.get_file()
+    file_content = await file.download_as_bytearray()
+
+    pdf_file = io.BytesIO(file_content)
+
     try:
-        extracted_text = process_pdf(file_path)
-        translated_text = translate_text(extracted_text)
-        update.message.reply_text(f"الترجمة:\n\n{translated_text}")
+        # حفظ الملف مؤقتًا باسمه
+        filename = document.file_name
+        with open(filename, "wb") as f:
+            f.write(pdf_file.getvalue())
+
+        # تحميل الملف إلى Aspose Cloud
+        response = pdf_api.upload_file(filename, pdf_file.getvalue())
+        if response.errors:
+            await update.message.reply_text("فشل تحميل الملف إلى Aspose Cloud.")
+            return
+
+        # ترجمة محتوى PDF
+        translate_request = TranslateTextRequest(source_language="en", target_language="ar")
+        translated_text = pdf_api.translate_text(filename, translate_request)
+
+        if not translated_text:
+            await update.message.reply_text("لم يتم العثور على نص للترجمة في الملف.")
+            return
+
+        await update.message.reply_text("النص المترجم:\n\n" + translated_text)
+    
     except Exception as e:
-        update.message.reply_text(f"❌ حدث خطأ: {str(e)}")
-    finally:
-        os.remove(file_path)
+        logger.error("خطأ في معالجة الملف: %s", e)
+        await update.message.reply_text("حدث خطأ أثناء معالجة الملف.")
 
 def main():
-    TELEGRAM_TOKEN = "6334414905:AAGdBEBDfiY7W9Nhyml1wHxSelo8gfpENR8"  # التوكن الخاص بك
-    updater = Updater(TELEGRAM_TOKEN)
-    dp = updater.dispatcher
+    """تشغيل بوت تليجرام"""
+    app = Application.builder().token(TELEGRAM_BOT_TOKEN).build()
 
-    dp.add_handler(CommandHandler("start", start))
-    dp.add_handler(MessageHandler(filters.Document.ALL, handle_document))  # التعديل هنا
-    
-    updater.start_polling()
-    updater.idle()
+    app.add_handler(CommandHandler("start", start))
+    app.add_handler(MessageHandler(filters.Document.MimeType("application/pdf"), handle_document))
 
-if __name__ == "__main__":
+    app.run_polling()
+
+if __name__ == '__main__':
     main()
