@@ -4,10 +4,11 @@ import requests
 from telegram.ext import Application, CommandHandler, MessageHandler, filters
 import PyPDF2
 
-# إعدادات البوت ومفتاح APY Hub
+# إعدادات البوت ومفتاح API الخاص بـ APY Hub
 TELEGRAM_BOT_TOKEN = "6334414905:AAGdBEBDfiY7W9Nhyml1wHxSelo8gfpENR8"
 API_TOKEN = "APY0ShNmihUEqMaIuecO9MOQJnoWaBmCcLPfDzknG0URVRiDhAjU2HLznsHVkA4tX"
-TRANSLATOR_ENDPOINT = "https://api.apyhub.com/utility/text-translator"
+# تم تعديل نقطة النهاية لتشمل "/translate" في نهايتها
+TRANSLATOR_ENDPOINT = "https://api.apyhub.com/utility/text-translator/translate"
 
 # إعداد تسجيل الأخطاء
 logging.basicConfig(format='%(asctime)s - %(name)s - %(levelname)s - %(message)s', level=logging.INFO)
@@ -33,11 +34,11 @@ def translate_text(text):
         response = requests.post(TRANSLATOR_ENDPOINT, headers=headers, json=data)
         if response.status_code == 200:
             result = response.json()
-            # تأكد من مفتاح الاستجابة وفق توثيق APY Hub؛ هنا نفترض أنه "translated_text"
+            # تأكد من مفتاح الاستجابة وفقًا لتوثيق APY Hub؛ هنا نفترض أنه "translated_text"
             return result.get("translated_text", "لم يتم العثور على نص مترجم في الاستجابة.")
         else:
             logger.error("خطأ في الترجمة: %s", response.text)
-            return "فشل الاتصال بخدمة الترجمة: " + response.text
+            return f"فشل الاتصال بخدمة الترجمة: {response.text}"
     except Exception as e:
         logger.error("Exception during translation: %s", e)
         return "حدث خطأ أثناء الترجمة."
