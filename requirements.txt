@@ -1,6 +1,3 @@
-aiogram
-pymupdf
-pytesseract
-pdf2image
-Pillow
-deep-translator
+python-telegram-bot
+PyPDF2
+requests
