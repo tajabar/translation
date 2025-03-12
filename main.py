@@ -1,75 +1,80 @@
-import os
-import asyncio
-import fitz  # PyMuPDF
-import pytesseract
-from pdf2image import convert_from_path
-from PIL import Image
-from aiogram import Bot, Dispatcher, types
-from aiogram.types import FSInputFile
-from aiogram.filters import Command
-from deep_translator import GoogleTranslator
+import logging
+import io
+import requests
+from telegram.ext import Updater, CommandHandler, MessageHandler, Filters
+import PyPDF2
 
-# إعدادات الـ OCR
-pytesseract.pytesseract.tesseract_cmd = r"C:\Program Files\Tesseract-OCR\tesseract.exe"  # غير هذا المسار حسب نظامك
+# إعدادات البوت ومفتاح الترجمة
+TELEGRAM_BOT_TOKEN = "6334414905:AAGdBEBDfiY7W9Nhyml1wHxSelo8gfpENR8"
+YANDEX_API_KEY = "aje8gi5i95c2mra75nub"
+YANDEX_TRANSLATE_URL = "https://translate.yandex.net/api/v1.5/tr.json/translate"
 
-# إنشاء مجلد downloads إذا لم يكن موجودًا
-os.makedirs("downloads", exist_ok=True)
+# إعداد تسجيل الأخطاء (اختياري)
+logging.basicConfig(format='%(asctime)s - %(name)s - %(levelname)s - %(message)s', level=logging.INFO)
+logger = logging.getLogger(__name__)
 
-TOKEN = "6334414905:AAGdBEBDfiY7W9Nhyml1wHxSelo8gfpENR8"  # ضع التوكن الخاص بك هنا
-bot = Bot(token=TOKEN)
-dp = Dispatcher()
+def start(update, context):
+    update.message.reply_text("مرحباً! أرسل لي ملف PDF يحتوي على نص باللغة الإنجليزية وسأقوم بترجمته إلى العربية.")
 
-translator = GoogleTranslator(source="en", target="ar")
+def translate_text(text):
+    params = {
+        "key": YANDEX_API_KEY,
+        "text": text,
+        "lang": "en-ar"
+    }
+    try:
+        response = requests.get(YANDEX_TRANSLATE_URL, params=params)
+        response.raise_for_status()
+        data = response.json()
+        if data.get("code") == 200:
+            # النص المترجم يُعاد في قائمة ضمن المفتاح 'text'
+            return " ".join(data["text"])
+        else:
+            return "حدث خطأ أثناء الترجمة. رمز الخطأ: {}".format(data.get("code"))
+    except Exception as e:
+        logger.error("Error during translation: %s", e)
+        return "فشل الاتصال بخدمة الترجمة."
 
-async def extract_text_from_image(image):
-    """ استخدام OCR لاستخراج النصوص من صورة """
-    text = pytesseract.image_to_string(image, lang="eng")
-    return text.strip()
+def handle_document(update, context):
+    document = update.message.document
+    if document.mime_type != "application/pdf":
+        update.message.reply_text("يرجى إرسال ملف PDF.")
+        return
 
-async def translate_pdf_with_ocr(input_path, output_path):
-    """ استخراج النصوص عبر OCR، ترجمتها، وإعادة إنشائها في PDF جديد """
-    images = convert_from_path(input_path)
-    doc = fitz.open(input_path)
+    update.message.reply_text("يتم تحميل الملف ومعالجته...")
+    file = document.get_file()
+    file_content = file.download_as_bytearray()
 
-    for i, page in enumerate(doc):
-        img = images[i]
-        extracted_text = await extract_text_from_image(img)
+    pdf_file = io.BytesIO(file_content)
+    try:
+        reader = PyPDF2.PdfReader(pdf_file)
+        text = ""
+        for page in reader.pages:
+            extracted = page.extract_text()
+            if extracted:
+                text += extracted + "\n"
+    except Exception as e:
+        logger.error("Error reading PDF: %s", e)
+        update.message.reply_text("تعذر قراءة الملف. تأكد أنه ملف PDF يحتوي على نص قابل للاستخراج.")
+        return
 
-        if extracted_text:
-            translated_text = translator.translate(extracted_text)
-            page.insert_text((50, 50), translated_text, fontsize=12, color=(0, 0, 0))
+    if not text.strip():
+        update.message.reply_text("لم يتم العثور على نص في الملف.")
+        return
 
-    doc.save(output_path)
-    return True
+    update.message.reply_text("جارٍ الترجمة، يرجى الانتظار...")
+    translated = translate_text(text)
+    update.message.reply_text("النص المترجم:\n\n" + translated)
 
-@dp.message(Command("start"))
-async def start_handler(message: types.Message):
-    await message.answer("أرسل لي ملف PDF وسأقوم بترجمته إلى العربية مع الحفاظ على تصميمه.")
+def main():
+    updater = Updater(TELEGRAM_BOT_TOKEN, use_context=True)
+    dp = updater.dispatcher
 
-@dp.message(lambda message: message.document and message.document.mime_type == "application/pdf")
-async def handle_pdf(message: types.Message):
-    file_id = message.document.file_id
-    file = await bot.get_file(file_id)
-    input_filename = file.file_path.split('/')[-1]
-    input_path = f"downloads/{input_filename}"
-    output_path = f"downloads/translated_{input_filename}"
+    dp.add_handler(CommandHandler("start", start))
+    dp.add_handler(MessageHandler(Filters.document.mime_type("application/pdf"), handle_document))
 
-    # تنزيل ملف الـ PDF إلى المجلد downloads
-    await bot.download_file(file.file_path, input_path)
-    await message.answer("جارٍ استخراج النصوص باستخدام OCR وترجمتها، انتظر قليلاً...")
+    updater.start_polling()
+    updater.idle()
 
-    # استخدام OCR لاستخراج النصوص وترجمتها
-    success = await translate_pdf_with_ocr(input_path, output_path)
-
-    if success:
-        translated_file = FSInputFile(output_path, filename="translated.pdf")
-        await message.answer_document(translated_file, caption="تمت الترجمة بنجاح باستخدام OCR!")
-    else:
-        await message.answer("عذرًا، لم أتمكن من استخراج النصوص من هذا الملف.")
-
-async def main():
-    await dp.start_polling(bot)
-
-if __name__ == "__main__":
-    asyncio.run(main())
-
+if __name__ == '__main__':
+    main()
