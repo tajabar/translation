@@ -4,12 +4,12 @@ import requests
 from telegram.ext import Application, CommandHandler, MessageHandler, filters
 import PyPDF2
 
-‎# إعدادات البوت ومفتاح الترجمة
+
 TELEGRAM_BOT_TOKEN = "6334414905:AAGdBEBDfiY7W9Nhyml1wHxSelo8gfpENR8"
 YANDEX_API_KEY = "aje8gi5i95c2mra75nub"
 YANDEX_TRANSLATE_URL = "https://translate.yandex.net/api/v1.5/tr.json/translate"
 
-‎# إعداد تسجيل الأخطاء
+
 logging.basicConfig(format='%(asctime)s - %(name)s - %(levelname)s - %(message)s', level=logging.INFO)
 logger = logging.getLogger(__name__)
 
