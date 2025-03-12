@@ -4,35 +4,43 @@ import requests
 from telegram.ext import Application, CommandHandler, MessageHandler, filters
 import PyPDF2
 
-
+# إعدادات البوت ومفتاح APY Hub
 TELEGRAM_BOT_TOKEN = "6334414905:AAGdBEBDfiY7W9Nhyml1wHxSelo8gfpENR8"
-YANDEX_API_KEY = "aje8gi5i95c2mra75nub"
-YANDEX_TRANSLATE_URL = "https://translate.yandex.net/api/v1.5/tr.json/translate"
+API_TOKEN = "APY0ShNmihUEqMaIuecO9MOQJnoWaBmCcLPfDzknG0URVRiDhAjU2HLznsHVkA4tX"
+TRANSLATOR_ENDPOINT = "https://api.apyhub.com/utility/text-translator"
 
-
+# إعداد تسجيل الأخطاء
 logging.basicConfig(format='%(asctime)s - %(name)s - %(levelname)s - %(message)s', level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 async def start(update, context):
-    await update.message.reply_text("مرحباً! أرسل لي ملف PDF وسأقوم بترجمته.")
+    await update.message.reply_text("مرحباً! أرسل لي ملف PDF باللغة الإنجليزية وسأقوم بترجمته إلى العربية.")
 
 def translate_text(text):
-    params = {
-        "key": YANDEX_API_KEY,
+    """
+    ترسل هذه الدالة النص إلى API APY Hub لترجمته من الإنجليزية إلى العربية.
+    """
+    headers = {
+        "Content-Type": "application/json",
+        "x-api-key": API_TOKEN
+    }
+    data = {
         "text": text,
-        "lang": "en-ar"
+        "source": "en",
+        "target": "ar"
     }
     try:
-        response = requests.get(YANDEX_TRANSLATE_URL, params=params)
-        response.raise_for_status()
-        data = response.json()
-        if data.get("code") == 200:
-            return " ".join(data["text"])
+        response = requests.post(TRANSLATOR_ENDPOINT, headers=headers, json=data)
+        if response.status_code == 200:
+            result = response.json()
+            # تأكد من مفتاح الاستجابة وفق توثيق APY Hub؛ هنا نفترض أنه "translated_text"
+            return result.get("translated_text", "لم يتم العثور على نص مترجم في الاستجابة.")
         else:
-            return f"خطأ أثناء الترجمة: {data.get('code')}"
+            logger.error("خطأ في الترجمة: %s", response.text)
+            return "فشل الاتصال بخدمة الترجمة: " + response.text
     except Exception as e:
-        logger.error("Error during translation: %s", e)
-        return "فشل الاتصال بخدمة الترجمة."
+        logger.error("Exception during translation: %s", e)
+        return "حدث خطأ أثناء الترجمة."
 
 async def handle_document(update, context):
     document = update.message.document
@@ -53,8 +61,8 @@ async def handle_document(update, context):
             if extracted:
                 text += extracted + "\n"
     except Exception as e:
-        logger.error("Error reading PDF: %s", e)
-        await update.message.reply_text("تعذر قراءة الملف. تأكد أنه يحتوي على نص قابل للاستخراج.")
+        logger.error("خطأ في قراءة PDF: %s", e)
+        await update.message.reply_text("تعذر قراءة الملف. تأكد أنه ملف PDF يحتوي على نص قابل للاستخراج.")
         return
 
     if not text.strip():
