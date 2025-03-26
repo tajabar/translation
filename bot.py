@@ -1,120 +1,99 @@
+import logging
 import os
 import re
-from num2words import num2words
+from telegram.ext import Updater, MessageHandler, Filters, CommandHandler
 import speech_recognition as sr
 from pydub import AudioSegment
-from telegram import Update
-from telegram.ext import Updater, CommandHandler, MessageHandler, Filters, CallbackContext
-from PyPDF2 import PdfFileReader, PdfFileWriter
+import PyPDF2
 
-# Dictionary to store user PDFs (key: user_id, value: file path)
-user_pdfs = {}
+# ضع توكن البوت الخاص بك هنا
+TOKEN = '5146976580:AAE2yXc-JK6MIHVlLDy-O4YODucS_u7Zq-8'
 
-# Initialize recognizer
-recognizer = sr.Recognizer()
+# إعدادات تسجيل الأحداث
+logging.basicConfig(format='%(asctime)s - %(name)s - %(levelname)s - %(message)s', level=logging.INFO)
 
-def start(update: Update, context: CallbackContext) -> None:
-    update.message.reply_text("مرحبًا! أرسل ملف PDF أولًا، ثم أرسل أمرًا صوتيًا مثل 'قسم من صفحة 6 إلى 12'.")
+# متغير لتخزين مسار ملف PDF المُستلم
+pdf_file_path = None
 
-def handle_pdf(update: Update, context: CallbackContext) -> None:
-    user_id = update.message.from_user.id
-    pdf_file = update.message.document.get_file()
-    pdf_path = f"{user_id}_input.pdf"
-    pdf_file.download(pdf_path)
-    user_pdfs[user_id] = pdf_path
-    update.message.reply_text("تم استلام الملف. الآن أرسل أمرًا صوتيًا لتقسيم الصفحات.")
+def start(update, context):
+    update.message.reply_text("مرحباً! أرسل لي ملف PDF أولاً.")
 
-def convert_written_numbers(text):
-    """Convert written numbers (e.g., 'ستة') to digits (e.g., '6')."""
-    number_map = {
-        "واحد": "1",
-        "اثنين": "2",
-        "ثلاثة": "3",
-        "أربعة": "4",
-        "خمسة": "5",
-        "ستة": "6",
-        "سبعة": "7",
-        "ثمانية": "8",
-        "تسعة": "9",
-        "عشرة": "10",
-    }
-    for word, digit in number_map.items():
-        text = text.replace(word, digit)
-    return text
+def handle_pdf(update, context):
+    global pdf_file_path
+    file = update.message.document.get_file()
+    pdf_file_path = 'input.pdf'
+    file.download(pdf_file_path)
+    update.message.reply_text("تم استلام ملف PDF. الآن أرسل بصمة صوتية تحتوي على التعليمات.")
 
-def handle_voice(update: Update, context: CallbackContext) -> None:
-    user_id = update.message.from_user.id
-    if user_id not in user_pdfs:
-        update.message.reply_text("يرجى إرسال ملف PDF أولًا!")
+def handle_voice(update, context):
+    global pdf_file_path
+    if not pdf_file_path:
+        update.message.reply_text("لم يتم استلام ملف PDF بعد. أرجو إرساله أولاً.")
         return
 
-    # Download voice message
-    voice_file = update.message.voice.get_file()
-    ogg_path = f"{user_id}_voice.ogg"
-    wav_path = f"{user_id}_voice.wav"
-    voice_file.download(ogg_path)
+    # تحميل ملف الصوت
+    voice = update.message.voice.get_file()
+    voice_file_path = "voice.ogg"
+    voice.download(voice_file_path)
 
-    # Convert OGG to WAV
-    audio = AudioSegment.from_ogg(ogg_path)
-    audio.export(wav_path, format="wav")
+    # تحويل ملف ogg إلى wav باستخدام pydub
+    wav_file_path = "voice.wav"
+    try:
+        audio = AudioSegment.from_ogg(voice_file_path)
+        audio.export(wav_file_path, format="wav")
+    except Exception as e:
+        update.message.reply_text("حدث خطأ أثناء تحويل ملف الصوت.")
+        return
 
-    # Speech-to-text
-    with sr.AudioFile(wav_path) as source:
+    # التعرف على الكلام باستخدام SpeechRecognition
+    recognizer = sr.Recognizer()
+    with sr.AudioFile(wav_file_path) as source:
         audio_data = recognizer.record(source)
-        try:
-            text = recognizer.recognize_google(audio_data, language='ar-AR')
-            update.message.reply_text(f"تم فهم النص: {text}")
-        except sr.UnknownValueError:
-            update.message.reply_text("عذراً، لا استطيع فهم الصوت.")
-            os.remove(ogg_path)
-            os.remove(wav_path)
-            return
-
-    # Convert written numbers to digits
-    text = convert_written_numbers(text.lower())
-
-    # Extract page numbers using an improved regex
-    match = re.search(r'(?:من\s+)?(?:الصفحة\s+)?(\d+)\s+(?:الى|إلى)\s+(\d+)', text, re.IGNORECASE)
-    if not match:
-        update.message.reply_text("الصيغة غير صحيحة. الرجاء قول شيء مثل: 'قسم من صفحة 6 إلى 12'.")
-        os.remove(ogg_path)
-        os.remove(wav_path)
+    try:
+        # يمكن تحديد اللغة العربية باستخدام رمز اللغة المناسب (مثلاً "ar-SA")
+        text = recognizer.recognize_google(audio_data, language="ar-SA")
+        update.message.reply_text(f"تم التعرف على النص: {text}")
+    except Exception as e:
+        update.message.reply_text("حدث خطأ أثناء التعرف على الصوت.")
         return
 
-    start_page = int(match.group(1)) - 1  # PDFs are 0-indexed
-    end_page = int(match.group(2)) - 1
+    # استخراج أرقام الصفحات من النص باستخدام تعبير عادي
+    # على سبيل المثال، يتوقع النص: "قسم من صفحة 6 إلى 12"
+    match = re.search(r'صفحة\s+(\d+)\s+إلى\s+(\d+)', text)
+    if not match:
+        update.message.reply_text("لم أستطع استخراج أرقام الصفحات من النص. تأكد من النطق بشكل صحيح.")
+        return
 
-    # Split PDF
-    pdf_path = user_pdfs[user_id]
-    output_pdf = f"{user_id}_output.pdf"
-    split_pdf(pdf_path, start_page, end_page, output_pdf)
+    start_page = int(match.group(1))
+    end_page = int(match.group(2))
 
-    # Send result
-    with open(output_pdf, 'rb') as f:
-        update.message.reply_document(document=f)
+    try:
+        with open(pdf_file_path, 'rb') as pdf_file:
+            reader = PyPDF2.PdfReader(pdf_file)
+            writer = PyPDF2.PdfWriter()
+            total_pages = len(reader.pages)
+            if start_page < 1 or end_page > total_pages or start_page > end_page:
+                update.message.reply_text("أرقام الصفحات غير صحيحة. تأكد من أن الصفحات ضمن نطاق الملف.")
+                return
+            for i in range(start_page - 1, end_page):
+                writer.add_page(reader.pages[i])
+            output_pdf_path = "output.pdf"
+            with open(output_pdf_path, 'wb') as out_pdf:
+                writer.write(out_pdf)
+        update.message.reply_text("تم استخراج الصفحات المطلوبة، جارٍ إرسال الملف...")
+        update.message.reply_document(document=open(output_pdf_path, 'rb'))
+    except Exception as e:
+        update.message.reply_text("حدث خطأ أثناء معالجة ملف PDF.")
 
-    # Clean up
-    os.remove(ogg_path)
-    os.remove(wav_path)
-    os.remove(output_pdf)
+def main():
+    updater = Updater(TOKEN, use_context=True)
+    dp = updater.dispatcher
 
-def split_pdf(input_path, start, end, output_path):
-    reader = PdfFileReader(input_path)
-    writer = PdfFileWriter()
-    for page_num in range(start, end + 1):
-        if page_num >= reader.getNumPages():
-            break
-        writer.addPage(reader.getPage(page_num))
-    with open(output_path, 'wb') as out:
-        writer.write(out)
-
-def main() -> None:
-    updater = Updater("5146976580:AAE2yXc-JK6MIHVlLDy-O4YODucS_u7Zq-8")
-    dispatcher = updater.dispatcher
-
-    dispatcher.add_handler(CommandHandler("start", start))
-    dispatcher.add_handler(MessageHandler(Filters.document.pdf, handle_pdf))
-    dispatcher.add_handler(MessageHandler(Filters.voice, handle_voice))
+    dp.add_handler(CommandHandler("start", start))
+    # التعرف على ملف PDF عند إرساله
+    dp.add_handler(MessageHandler(Filters.document.pdf, handle_pdf))
+    # التعرف على رسالة الصوت عند إرسالها
+    dp.add_handler(MessageHandler(Filters.voice, handle_voice))
 
     updater.start_polling()
     updater.idle()
