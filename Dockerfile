@@ -30,4 +30,4 @@ COPY --from=builder /app /app
 ENV BOT_TOKEN=YOUR_BOT_TOKEN
 
 # Command to run the bot
-CMD ["python", "bot.py"]ر
+CMD ["python", "bot.py"]
