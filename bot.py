@@ -1,140 +1,114 @@
-import logging
 import os
 import re
-from telegram.ext import Updater, MessageHandler, Filters, CommandHandler
+import fitz  # PyMuPDF
 import speech_recognition as sr
+from aiogram import Bot, Dispatcher, types
+from aiogram.utils import executor
 from pydub import AudioSegment
-import PyPDF2
+from vosk import Model, KaldiRecognizer
+from word2number import w2n
 
-# ضع توكن البوت الخاص بك هنا
-TOKEN = '5146976580:AAE2yXc-JK6MIHVlLDy-O4YODucS_u7Zq-8'
+TOKEN = "5146976580:AAE2yXc-JK6MIHVlLDy-O4YODucS_u7Zq-8"
+bot = Bot(token=TOKEN)
+dp = Dispatcher(bot)
 
-# إعداد تسجيل الأحداث
-logging.basicConfig(format='%(asctime)s - %(name)s - %(levelname)s - %(message)s', level=logging.INFO)
+# تحميل نموذج التعرف على الصوت (تأكد من تحميله إلى مجلد `model`)
+MODEL_PATH = "model"
+if not os.path.exists(MODEL_PATH):
+    raise FileNotFoundError("مجلد النموذج غير موجود! قم بتحميل نموذج Vosk من https://alphacephei.com/vosk/models")
 
-# مسار ملف PDF المستلم
-pdf_file_path = None
+model = Model(MODEL_PATH)
 
-def word_to_number(word):
-    """
-    تحويل الكلمات الترتيبية إلى أرقام.
-    """
-    mapping = {
-        'اولى': 1, 'اول': 1, 'واحد': 1,
-        'الثانية': 2, 'ثانيه': 2, 'اثنين': 2,
-        'الثالثة': 3, 'ثالثه': 3, 'ثلاثة': 3,
-        'الرابعة': 4, 'رابعه': 4, 'اربعة': 4,
-        'الخامسة': 5, 'خامسه': 5, 'خمسة': 5,
-        'السادسة': 6, 'سادسه': 6, 'ستة': 6,
-        'السابعة': 7, 'سابعه': 7, 'سبعة': 7,
-        'الثامنة': 8, 'تامنه': 8, 'ثمانية': 8,
-        'التاسعة': 9, 'تاسعه': 9, 'تسعة': 9,
-        'العاشرة': 10, 'عاشره': 10, 'عشرة': 10
-    }
-    word = word.lower().strip()
-    # إزالة لاحقة "ال" إن وجدت
-    if word.startswith("ال"):
-        word = word[2:]
-    return mapping.get(word, None)
+def convert_words_to_numbers(text):
+    """تحويل الأرقام المكتوبة بالعربية إلى أرقام رقمية"""
+    words = text.split()
+    converted_words = []
+    for word in words:
+        try:
+            converted_word = str(w2n.word_to_num(word))  # تحويل الكلمة إلى رقم
+        except ValueError:
+            converted_word = word  # إذا لم يكن رقماً، أبقه كما هو
+        converted_words.append(converted_word)
+    return " ".join(converted_words)
 
-def start(update, context):
-    update.message.reply_text("مرحباً! أرسل ملف PDF أولاً.")
+def extract_pages_from_pdf(pdf_path, start_page, end_page, output_path):
+    """استخراج الصفحات المطلوبة من ملف PDF"""
+    doc = fitz.open(pdf_path)
+    new_doc = fitz.open()
+    
+    for page_num in range(start_page - 1, end_page):
+        new_doc.insert_pdf(doc, from_page=page_num, to_page=page_num)
 
-def handle_pdf(update, context):
-    global pdf_file_path
-    file = update.message.document.get_file()
-    pdf_file_path = 'input.pdf'
-    file.download(pdf_file_path)
-    update.message.reply_text("تم استلام ملف PDF. الآن أرسل بصمة صوتية تحتوي على التعليمات.")
+    new_doc.save(output_path)
+    new_doc.close()
 
-def handle_voice(update, context):
-    global pdf_file_path
-    if not pdf_file_path:
-        update.message.reply_text("لم يتم استلام ملف PDF بعد. أرجو إرساله أولاً.")
-        return
+@dp.message_handler(content_types=types.ContentType.VOICE)
+async def handle_voice(message: types.Message):
+    """معالجة البصمات الصوتية"""
+    voice = await message.voice.download()
+    ogg_path = f"{message.from_user.id}.ogg"
+    wav_path = f"{message.from_user.id}.wav"
 
-    # تحميل ملف الصوت
-    voice = update.message.voice.get_file()
-    voice_file_path = "voice.ogg"
-    voice.download(voice_file_path)
+    with open(ogg_path, "wb") as f:
+        f.write(voice.getvalue())
 
-    # تحويل ملف ogg إلى wav باستخدام pydub
-    wav_file_path = "voice.wav"
-    try:
-        audio = AudioSegment.from_ogg(voice_file_path)
-        audio.export(wav_file_path, format="wav")
-    except Exception as e:
-        update.message.reply_text("حدث خطأ أثناء تحويل ملف الصوت.")
-        return
+    # تحويل الصوت من OGG إلى WAV
+    audio = AudioSegment.from_ogg(ogg_path)
+    audio.export(wav_path, format="wav")
 
-    # التعرف على الكلام باستخدام SpeechRecognition
     recognizer = sr.Recognizer()
-    with sr.AudioFile(wav_file_path) as source:
+    with sr.AudioFile(wav_path) as source:
         audio_data = recognizer.record(source)
+
     try:
-        # تحديد اللغة العربية (ar-SA)
-        text = recognizer.recognize_google(audio_data, language="ar-SA")
-        update.message.reply_text(f"تم التعرف على النص: {text}")
+        rec = KaldiRecognizer(model, 16000)
+        rec.AcceptWaveform(audio_data.get_wav_data())
+        text = rec.Result()
+
+        # تنظيف النص المستخرج
+        text = re.sub(r'[\W_]+', ' ', text).strip()
+        text = convert_words_to_numbers(text)  # تحويل الكلمات إلى أرقام
+        match = re.search(r'(\d+)\s+الى\s+(\d+)', text)
+
+        if match:
+            start_page, end_page = int(match.group(1)), int(match.group(2))
+            await message.reply(f"تم استخراج الصفحات: {start_page} إلى {end_page}")
+            # ستتم معالجة PDF هنا لاحقًا عند استلام ملف
+        else:
+            await message.reply("لم أستطع استخراج أرقام الصفحات من النص. تأكد من النطق بشكل صحيح.")
     except Exception as e:
-        update.message.reply_text("حدث خطأ أثناء التعرف على الصوت.")
+        await message.reply(f"حدث خطأ أثناء معالجة الصوت: {str(e)}")
+
+    # تنظيف الملفات المؤقتة
+    os.remove(ogg_path)
+    os.remove(wav_path)
+
+@dp.message_handler(content_types=types.ContentType.DOCUMENT)
+async def handle_pdf(message: types.Message):
+    """استقبال ملفات PDF"""
+    if not message.document.file_name.endswith(".pdf"):
+        await message.reply("يرجى إرسال ملف PDF فقط.")
         return
 
-    # استخراج أرقام الصفحات من النص مع دعم الكلمات الترتيبية
-    # يبحث التعبير العادي عن "صفحه" ثم الكلمة المراد تحويلها، ثم "الى صفحه" ثم الكلمة الثانية
-    match = re.search(r'(?:صفحه\s+)?([^\s]+)\s+الى\s+(?:صفحه\s+)?([^\s]+)', text, re.IGNORECASE)
-    if not match:
-        update.message.reply_text("لم أستطع استخراج أرقام الصفحات من النص. تأكد من النطق بشكل صحيح.")
-        return
+    pdf_path = f"{message.from_user.id}.pdf"
+    output_path = f"{message.from_user.id}_split.pdf"
 
-    start_str = match.group(1)
-    end_str = match.group(2)
+    # تحميل الملف
+    file = await bot.get_file(message.document.file_id)
+    await bot.download_file(file.file_path, pdf_path)
 
-    # محاولة تحويل النص إلى رقم مباشرةً، وإن لم يكن رقمًا تحويله باستخدام دالة word_to_number
+    # استخراج الصفحات المطلوبة
     try:
-        start_page = int(start_str)
-    except ValueError:
-        start_page = word_to_number(start_str)
+        # يمكنك استخدام متغيرات start_page و end_page هنا إذا كانت مخزنة مسبقًا من معالجة الصوت
+        extract_pages_from_pdf(pdf_path, 2, 5, output_path)
+        await message.reply_document(open(output_path, "rb"), caption="تم استخراج الصفحات المطلوبة!")
 
-    try:
-        end_page = int(end_str)
-    except ValueError:
-        end_page = word_to_number(end_str)
-
-    if start_page is None or end_page is None:
-        update.message.reply_text("لم أستطع تحويل الكلمات إلى أرقام. تأكد من النطق.")
-        return
-
-    # معالجة ملف PDF واستخراج الصفحات المطلوبة
-    try:
-        with open(pdf_file_path, 'rb') as pdf_file:
-            reader = PyPDF2.PdfReader(pdf_file)
-            writer = PyPDF2.PdfWriter()
-            total_pages = len(reader.pages)
-            if start_page < 1 or end_page > total_pages or start_page > end_page:
-                update.message.reply_text("أرقام الصفحات غير صحيحة. تأكد من أن الصفحات ضمن نطاق الملف.")
-                return
-            for i in range(start_page - 1, end_page):
-                writer.add_page(reader.pages[i])
-            output_pdf_path = "output.pdf"
-            with open(output_pdf_path, 'wb') as out_pdf:
-                writer.write(out_pdf)
-        update.message.reply_text("تم استخراج الصفحات المطلوبة، جارٍ إرسال الملف...")
-        update.message.reply_document(document=open(output_pdf_path, 'rb'))
     except Exception as e:
-        update.message.reply_text("حدث خطأ أثناء معالجة ملف PDF.")
+        await message.reply(f"حدث خطأ أثناء معالجة PDF: {str(e)}")
 
-def main():
-    updater = Updater(TOKEN, use_context=True)
-    dp = updater.dispatcher
+    # تنظيف الملفات
+    os.remove(pdf_path)
+    os.remove(output_path)
 
-    dp.add_handler(CommandHandler("start", start))
-    # استقبال ملف PDF عند إرساله
-    dp.add_handler(MessageHandler(Filters.document.pdf, handle_pdf))
-    # استقبال الرسائل الصوتية
-    dp.add_handler(MessageHandler(Filters.voice, handle_voice))
-
-    updater.start_polling()
-    updater.idle()
-
-if __name__ == '__main__':
-    main()
+if __name__ == "__main__":
+    executor.start_polling(dp, skip_updates=True)
