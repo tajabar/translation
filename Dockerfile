@@ -1,7 +1,7 @@
 # استخدام صورة بايثون خفيفة
 FROM python:3.9-slim
 
-# تثبيت ffmpeg اللازم لتحويل ملفات الصوت باستخدام pydub
+# تثبيت ffmpeg اللازم لمعالجة ملفات الصوت عبر pydub
 RUN apt-get update && \
     apt-get install -y ffmpeg && \
     rm -rf /var/lib/apt/lists/*
