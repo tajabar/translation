@@ -9,14 +9,36 @@ import PyPDF2
 # ضع توكن البوت الخاص بك هنا
 TOKEN = '5146976580:AAE2yXc-JK6MIHVlLDy-O4YODucS_u7Zq-8'
 
-# إعدادات تسجيل الأحداث
+# إعداد تسجيل الأحداث
 logging.basicConfig(format='%(asctime)s - %(name)s - %(levelname)s - %(message)s', level=logging.INFO)
 
-# متغير لتخزين مسار ملف PDF المُستلم
+# مسار ملف PDF المستلم
 pdf_file_path = None
 
+def word_to_number(word):
+    """
+    تحويل الكلمات الترتيبية إلى أرقام.
+    """
+    mapping = {
+        'اولى': 1, 'اول': 1, 'واحد': 1,
+        'الثانية': 2, 'ثانيه': 2, 'اثنين': 2,
+        'الثالثة': 3, 'ثالثه': 3, 'ثلاثة': 3,
+        'الرابعة': 4, 'رابعه': 4, 'اربعة': 4,
+        'الخامسة': 5, 'خامسه': 5, 'خمسة': 5,
+        'السادسة': 6, 'سادسه': 6, 'ستة': 6,
+        'السابعة': 7, 'سابعه': 7, 'سبعة': 7,
+        'الثامنة': 8, 'تامنه': 8, 'ثمانية': 8,
+        'التاسعة': 9, 'تاسعه': 9, 'تسعة': 9,
+        'العاشرة': 10, 'عاشره': 10, 'عشرة': 10
+    }
+    word = word.lower().strip()
+    # إزالة لاحقة "ال" إن وجدت
+    if word.startswith("ال"):
+        word = word[2:]
+    return mapping.get(word, None)
+
 def start(update, context):
-    update.message.reply_text("مرحباً! أرسل لي ملف PDF أولاً.")
+    update.message.reply_text("مرحباً! أرسل ملف PDF أولاً.")
 
 def handle_pdf(update, context):
     global pdf_file_path
@@ -50,23 +72,39 @@ def handle_voice(update, context):
     with sr.AudioFile(wav_file_path) as source:
         audio_data = recognizer.record(source)
     try:
-        # يمكن تحديد اللغة العربية باستخدام رمز اللغة المناسب (مثلاً "ar-SA")
+        # تحديد اللغة العربية (ar-SA)
         text = recognizer.recognize_google(audio_data, language="ar-SA")
         update.message.reply_text(f"تم التعرف على النص: {text}")
     except Exception as e:
         update.message.reply_text("حدث خطأ أثناء التعرف على الصوت.")
         return
 
-    # استخراج أرقام الصفحات من النص باستخدام تعبير عادي
-    # على سبيل المثال، يتوقع النص: "قسم من صفحة 6 إلى 12"
-    match = re.search(r'صفحة\s+(\d+).*?إلى\s+(\d+)', text)
+    # استخراج أرقام الصفحات من النص مع دعم الكلمات الترتيبية
+    # يبحث التعبير العادي عن "صفحه" ثم الكلمة المراد تحويلها، ثم "الى صفحه" ثم الكلمة الثانية
+    match = re.search(r'صفحه\s+([^\s]+).*?الى\s+صفحه\s+([^\s]+)', text, re.IGNORECASE)
     if not match:
         update.message.reply_text("لم أستطع استخراج أرقام الصفحات من النص. تأكد من النطق بشكل صحيح.")
         return
 
-    start_page = int(match.group(1))
-    end_page = int(match.group(2))
+    start_str = match.group(1)
+    end_str = match.group(2)
 
+    # محاولة تحويل النص إلى رقم مباشرةً، وإن لم يكن رقمًا تحويله باستخدام دالة word_to_number
+    try:
+        start_page = int(start_str)
+    except ValueError:
+        start_page = word_to_number(start_str)
+
+    try:
+        end_page = int(end_str)
+    except ValueError:
+        end_page = word_to_number(end_str)
+
+    if start_page is None or end_page is None:
+        update.message.reply_text("لم أستطع تحويل الكلمات إلى أرقام. تأكد من النطق.")
+        return
+
+    # معالجة ملف PDF واستخراج الصفحات المطلوبة
     try:
         with open(pdf_file_path, 'rb') as pdf_file:
             reader = PyPDF2.PdfReader(pdf_file)
@@ -90,9 +128,9 @@ def main():
     dp = updater.dispatcher
 
     dp.add_handler(CommandHandler("start", start))
-    # التعرف على ملف PDF عند إرساله
+    # استقبال ملف PDF عند إرساله
     dp.add_handler(MessageHandler(Filters.document.pdf, handle_pdf))
-    # التعرف على رسالة الصوت عند إرسالها
+    # استقبال الرسائل الصوتية
     dp.add_handler(MessageHandler(Filters.voice, handle_voice))
 
     updater.start_polling()
