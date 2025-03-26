@@ -1,20 +1,24 @@
-# استخدام صورة بايثون خفيفة
 FROM python:3.9-slim
 
-# تثبيت ffmpeg اللازم لمعالجة ملفات الصوت عبر pydub
+# تثبيت الأدوات اللازمة
 RUN apt-get update && \
-    apt-get install -y ffmpeg && \
+    apt-get install -y ffmpeg wget unzip && \
     rm -rf /var/lib/apt/lists/*
 
-# تعيين مجلد العمل
 WORKDIR /app
 
-# نسخ ملف المتطلبات وتثبيت المكتبات
+# تحميل وتثبيت المتطلبات
 COPY requirements.txt .
-RUN pip install --no-cache-dir -r requirements.txt
+RUN pip install --upgrade pip && pip install --no-cache-dir -r requirements.txt
 
-# نسخ ملفات الكود إلى داخل الحاوية
+# تحميل نموذج Vosk للغة العربية
+RUN wget -O vosk-model-ar.zip "https://alphacephei.com/vosk/models/vosk-model-ar-0.22.zip" && \
+    unzip vosk-model-ar.zip && \
+    mv vosk-model-ar-0.22 model && \
+    rm vosk-model-ar.zip
+
+# نسخ الكود إلى الحاوية
 COPY bot.py .
 
-# تعيين الأمر الافتراضي لتشغيل البوت
 CMD ["python", "bot.py"]
+
