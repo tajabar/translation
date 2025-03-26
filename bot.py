@@ -1,5 +1,6 @@
 import os
 import re
+from num2words import num2words
 import speech_recognition as sr
 from pydub import AudioSegment
 from telegram import Update
@@ -13,7 +14,7 @@ user_pdfs = {}
 recognizer = sr.Recognizer()
 
 def start(update: Update, context: CallbackContext) -> None:
-    update.message.reply_text("مرحبًا! أرسل ملف PDF أولًا، ثم أرسل أمرًا صوتيًا مثل 'قسم من صفحة X إلى Y'.")
+    update.message.reply_text("مرحبًا! أرسل ملف PDF أولًا، ثم أرسل أمرًا صوتيًا مثل 'قسم من صفحة 6 إلى 12'.")
 
 def handle_pdf(update: Update, context: CallbackContext) -> None:
     user_id = update.message.from_user.id
@@ -22,6 +23,24 @@ def handle_pdf(update: Update, context: CallbackContext) -> None:
     pdf_file.download(pdf_path)
     user_pdfs[user_id] = pdf_path
     update.message.reply_text("تم استلام الملف. الآن أرسل أمرًا صوتيًا لتقسيم الصفحات.")
+
+def convert_written_numbers(text):
+    """Convert written numbers (e.g., 'ستة') to digits (e.g., '6')."""
+    number_map = {
+        "واحد": "1",
+        "اثنين": "2",
+        "ثلاثة": "3",
+        "أربعة": "4",
+        "خمسة": "5",
+        "ستة": "6",
+        "سبعة": "7",
+        "ثمانية": "8",
+        "تسعة": "9",
+        "عشرة": "10",
+    }
+    for word, digit in number_map.items():
+        text = text.replace(word, digit)
+    return text
 
 def handle_voice(update: Update, context: CallbackContext) -> None:
     user_id = update.message.from_user.id
@@ -47,12 +66,19 @@ def handle_voice(update: Update, context: CallbackContext) -> None:
             update.message.reply_text(f"تم فهم النص: {text}")
         except sr.UnknownValueError:
             update.message.reply_text("عذراً، لا استطيع فهم الصوت.")
+            os.remove(ogg_path)
+            os.remove(wav_path)
             return
 
-    # Extract page numbers
-    match = re.search(r'من صفحة (\d+) الى (\d+)', text)
+    # Convert written numbers to digits
+    text = convert_written_numbers(text.lower())
+
+    # Extract page numbers using an improved regex
+    match = re.search(r'(?:من\s+)?(?:الصفحة\s+)?(\d+)\s+(?:الى|إلى)\s+(\d+)', text, re.IGNORECASE)
     if not match:
-        update.message.reply_text("التنسيق غير صحيح. قل مثلاً: 'قسم من صفحة 6 الى 12'.")
+        update.message.reply_text("الصيغة غير صحيحة. الرجاء قول شيء مثل: 'قسم من صفحة 6 إلى 12'.")
+        os.remove(ogg_path)
+        os.remove(wav_path)
         return
 
     start_page = int(match.group(1)) - 1  # PDFs are 0-indexed
