@@ -1,17 +1,33 @@
-# استخدام صورة Python الأساسية
-FROM python:3.10
+# Stage 1: Build the application
+FROM python:3.9-slim as builder
 
-# تعيين مجلد العمل داخل الحاوية
+# Set working directory
 WORKDIR /app
 
-# تحديث pip إلى أحدث إصدار
-RUN pip3 install --upgrade pip
+# Copy requirements file
+COPY requirements.txt .
 
-# نسخ ملفات المشروع إلى الحاوية
+# Install dependencies
+RUN pip install --no-cache-dir -r requirements.txt
+
+# Copy the rest of the application code
 COPY . .
 
-# تثبيت المتطلبات من ملف requirements.txt إذا كان موجودًا
-RUN pip3 install --no-cache-dir -r requirements.txt
+# Stage 2: Final image
+FROM python:3.9-slim
 
-# تشغيل السكريبت الأساسي عند تشغيل الحاوية
-CMD ["python3", "bot.py"]
+# Install ffmpeg for audio processing
+RUN apt-get update && apt-get install -y ffmpeg && rm -rf /var/lib/apt/lists/*
+
+# Set working directory
+WORKDIR /app
+
+# Copy installed dependencies and application code from builder stage
+COPY --from=builder /usr/local/lib/python3.9/site-packages /usr/local/lib/python3.9/site-packages
+COPY --from=builder /app /app
+
+# Set environment variables
+ENV BOT_TOKEN=YOUR_BOT_TOKEN
+
+# Command to run the bot
+CMD ["python", "bot.py"]
