@@ -81,7 +81,7 @@ def handle_voice(update, context):
 
     # استخراج أرقام الصفحات من النص مع دعم الكلمات الترتيبية
     # يبحث التعبير العادي عن "صفحه" ثم الكلمة المراد تحويلها، ثم "الى صفحه" ثم الكلمة الثانية
-    match = re.search(r'صفحه\s+([^\s]+).*?الى\s+صفحه\s+([^\s]+)', text, re.IGNORECASE)
+    match = re.search(r'(?:صفحه\s+)?([^\s]+)\s+الى\s+(?:صفحه\s+)?([^\s]+)', text, re.IGNORECASE)
     if not match:
         update.message.reply_text("لم أستطع استخراج أرقام الصفحات من النص. تأكد من النطق بشكل صحيح.")
         return
