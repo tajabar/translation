@@ -1,14 +1,9 @@
-python-telegram-bot==13.15
-# إذا كنت تفضل استخدام aiogram بدلاً من python-telegram-bot:
+vosk==0.3.45
 aiogram==2.25.1
-
-# للتعرف على الصوت:
 SpeechRecognition==3.8.1
 pydub==0.25.1
-word2number
-# للتعامل مع ملفات PDF بعدة طرق:
 PyMuPDF==1.21.1
 pdfplumber==0.7.6
 PyPDF2==3.0.1
-# مكتبة للتعرف على الكلام تعمل محلياً:
 vosk==0.3.45
+word2number
