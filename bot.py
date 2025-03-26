@@ -59,7 +59,7 @@ def handle_voice(update, context):
 
     # استخراج أرقام الصفحات من النص باستخدام تعبير عادي
     # على سبيل المثال، يتوقع النص: "قسم من صفحة 6 إلى 12"
-    match = re.search(r'صفحة\s+(\d+)\s+إلى\s+(\d+)', text)
+    match = re.search(r'صفحة\s+(\d+).*?إلى\s+(\d+)', text)
     if not match:
         update.message.reply_text("لم أستطع استخراج أرقام الصفحات من النص. تأكد من النطق بشكل صحيح.")
         return
